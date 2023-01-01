@@ -42,7 +42,6 @@ class AppMedia extends BaseController
         if ($file->getError()) {
             return sView::outputJsonError($file->getErrorMessage(), $file->getClientOriginalName());
         }
-
         $apiKey = request()->header('apiKey');
         //todo check thêm việc mã hóa key
         if (isset(config('key')[$apiKey])) {
@@ -81,7 +80,7 @@ class AppMedia extends BaseController
                 if ($width > config('image.big')) {
                     $width = config('image.big');
                 }
-                $image = $image->resize(400, 300, function ($constraint) {
+                $image = $image->resize($width, null, function ($constraint) {
                     $constraint->aspectRatio();
                 })->encode('jpeg', 100);
 
