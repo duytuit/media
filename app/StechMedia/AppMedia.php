@@ -6,11 +6,18 @@ namespace App\StechMedia;
 use App\StechMedia\Enum;
 use Exception;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Response;
 use Intervention\Image\Exception\ImageException;
 use Laravel\Lumen\Routing\Controller as BaseController;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Validator;
 use Intervention\Image\Facades\Image;
+use League\Flysystem\Filesystem;
+use StechCore\Helpers\sBug;
+use StechCore\Helpers\sView;
+use Symfony\Component\Console\Input\Input;
 
+use function PHPUnit\Framework\returnSelf;
 
 //https://cdn.dxmb.vn/uploads/size/...realpath in home
 class AppMedia extends BaseController
@@ -30,10 +37,10 @@ class AppMedia extends BaseController
         //làm nhanh phần upload cho kịp
         $file = request()->file('file');
         if (!$file) {
-            return response()->json(['success'=>false,'msg'=>Enum::ERROR_KEY_NOTFOUND['msg'].'|'. Enum::ERROR_KEY_NOTFOUND['code']],402);
+            return sView::outputJsonError(Enum::ERROR_KEY_NOTFOUND['msg'], Enum::ERROR_KEY_NOTFOUND['code']);
         }
         if ($file->getError()) {
-            return response()->json(['success'=>false,'msg'=>$file->getErrorMessage()],402);
+            return sView::outputJsonError($file->getErrorMessage(), $file->getClientOriginalName());
         }
 
         $apiKey = request()->header('apiKey');
@@ -74,18 +81,18 @@ class AppMedia extends BaseController
                 if ($width > config('image.big')) {
                     $width = config('image.big');
                 }
-                $image = $image->resize($width, null, function ($constraint) {
+                $image = $image->resize(400, 300, function ($constraint) {
                     $constraint->aspectRatio();
-                })->encode('jpeg', 95);
+                })->encode('jpeg', 100);
 
                 $disk = Storage::build([
                     'driver' => 'local',
                     'root'   => $this->public_path(),
                 ]);
                 $disk->put($uploadFolder . $fileNew, $image);
-                $file_webp = self::webpConvert2($uploadFolder . $fileNew);
-                $virtualLink = ['src' => $this->buildVirtualLink($uploadFolder, $fileNew)];
-                $virtualLink_webp = ['src' => $this->buildVirtualLink($uploadFolder, $fileNew).'.webp'];
+                // $file_webp = self::webpConvert2($uploadFolder . $fileNew);
+                // $virtualLink = ['src' => $this->buildVirtualLink($uploadFolder, $fileNew)];
+                // $virtualLink_webp = ['src' => $this->buildVirtualLink($uploadFolder, $fileNew).'.webp'];
 
                 $return = [
                     'msg'              => 'Upload file thành công',
@@ -94,15 +101,15 @@ class AppMedia extends BaseController
                     'relative'         => $uploadFolder . $fileNew,
                     'location'         => url($uploadFolder) . '/' . $fileNew, //dành cho ông tinymce
                     'full_size_link'   => url($uploadFolder) . '/' . $fileNew,
-                    'mini_size_link'   => route('image.mini', $virtualLink),
-                    'small_size_link'  => route('image.small', $virtualLink),
-                    'medium_size_link' => route('image.medium', $virtualLink),
-                    'big_size_link'    => route('image.big', $virtualLink),
-                    'crop_size_link'   => route('image.crop', array_merge($virtualLink, ['width' => 480, 'height' => 360])),
-                    'thumb_size_link'  => route('image.thumb', array_merge($virtualLink, ['width' => 480, 'height' => 360])),
+                    // 'mini_size_link'   => route('image.mini', $virtualLink),
+                    // 'small_size_link'  => route('image.small', $virtualLink),
+                    // 'medium_size_link' => route('image.medium', $virtualLink),
+                    // 'big_size_link'    => route('image.big', $virtualLink),
+                    // 'crop_size_link'   => route('image.crop', array_merge($virtualLink, ['width' => 480, 'height' => 360])),
+                    // 'thumb_size_link'  => route('image.thumb', array_merge($virtualLink, ['width' => 480, 'height' => 360])),
                     'origin'           => url($uploadFolder) . '/' . $fileNew,
-                    'webp'             => $file_webp,
-                    'webp_thumb_size_link'  => route('image.webp.thumb', array_merge($virtualLink_webp, ['width' => 480, 'height' => 360])),
+                    // 'webp'             => $file_webp,
+                    // 'webp_thumb_size_link'  => route('image.webp.thumb', array_merge($virtualLink_webp, ['width' => 480, 'height' => 360])),
                 ];
             } else {
                 if ($file->getSize() > 50000000) {
@@ -247,7 +254,90 @@ class AppMedia extends BaseController
             self::showNoImage();
         }
     }
+    public function resize_image()
+    {
+       
+        $width   = request('width', 0);
+        $type  = request('type', null);
+        $source  = request('src');
+        // check xem type la gi
+        $path ='';
+      
+        try {
+            if($type == 'webp'){
+                $ext = explode('.',$source);
+                $path_file_name = $ext[0];
+                $ext = $ext[count($ext)-1];
+               
+                $path = $this->public_path("$path_file_name.webp");
+                $path_name ="/$path_file_name.webp";
+                if($width){
+                    $path_name ="/$path_file_name-$width.webp";
+                   $path = $this->public_path("$path_file_name-$width.webp");
+                }
+                if(file_exists($path)){
+                    return redirect($path_name,301);
+                }
+    
+            }else{ // neu khong co type
+               
+                 $ext = explode('.',$source);
+                 $path_file_name = $ext[0];
+                 $ext = $ext[count($ext)-1];
+                
+                 $path = $this->public_path("$path_file_name.$ext");
+                 $path_name ="/$path_file_name.$ext";
+                 if($width){
+                    $path = $this->public_path("$path_file_name-$width.$ext");
+                    $path_name ="/$path_file_name-$width.$ext";
+                 }
+                
+                 if(file_exists($path)){
+                    // dd($path_name);
+                    return redirect($path_name,301);
+                 }
 
+            }
+            $source  = $this->public_path(request('src'));
+           
+            $image = Image::make($source);
+
+            $_width = $image->getWidth();
+
+            if ($_width < $width || $width == 0) {
+                $width = $_width;
+            }
+
+            if($type == 'webp'){
+                $image = $image->resize($width, null, function ($constraint) {
+                    $constraint->aspectRatio();
+                })->encode('webp',100);
+                $disk = Storage::build([
+                    'driver' => 'local',
+                    'root'   => '/'
+                ]);
+                $disk->put($path, $image);
+                header('Content-Type: image/webp');
+                echo $image;
+                $image->destroy();
+            }else{
+                $image = $image->resize($width, null, function ($constraint) {
+                    $constraint->aspectRatio();
+                })->encode('jpeg',100);
+                $disk = Storage::build([
+                    'driver' => 'local',
+                    'root'   => '/'
+                ]);
+                $disk->put($path, $image);
+                header('Content-Type: image/jpeg');
+                echo $image;
+                $image->destroy();
+            }
+         
+        } catch (ImageException $imageException) {
+            self::showNoImage();
+        }
+    }
     private function _gen_image_size_webp($type = 'thumb')
     {
         $width   = request('width', null);

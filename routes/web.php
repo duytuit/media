@@ -37,6 +37,10 @@ $router->get('/uploads/crop/{width}x{height}/{src:.*}', [
     'as' => 'image.crop', 'uses' => '\App\StechMedia\AppMedia@to_image_crop'
 ]);
 
+$router->get('/resize/image/{src:.*}', [
+    'as' => 'image.crop', 'uses' => '\App\StechMedia\AppMedia@resize_image'
+]);
+
 
 
 
